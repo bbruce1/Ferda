@@ -102,6 +102,32 @@ body {
 
 #menu-screen h1 { font-size: 1.8rem; margin-bottom: 8px; }
 
+.subset-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+  margin-bottom: 4px;
+}
+.subset-picker label {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.subset-picker select {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 2px solid var(--surface2);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer;
+}
+.subset-picker select:focus { border-color: var(--accent); }
+
 .menu-btn {
   width: 100%;
   max-width: 360px;

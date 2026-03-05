@@ -63,7 +63,24 @@ function initPassword() {
 // ── Menu ─────────────────────────────────────────────────────
 function showMenu() {
   showScreen('menu-screen');
-  $('#page-count').textContent = `${PAGES.length} pages loaded`;
+  updatePageCount();
+}
+
+function updatePageCount() {
+  const subset = getSelectedPages();
+  $('#page-count').textContent = `${subset.length} pages selected`;
+}
+
+// Get pages based on the subset dropdown
+function getSelectedPages() {
+  const choice = $('#quiz-subset') ? $('#quiz-subset').value : 'all';
+  if (choice === 'ec') {
+    return PAGES.filter(p => {
+      const num = parseInt(p.page, 10);
+      return num >= 10 && num <= 20;
+    });
+  }
+  return [...PAGES];
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -171,9 +188,10 @@ function updateHeader(prefix) {
 // MATCHING MODE
 // ══════════════════════════════════════════════════════════════
 function startMatching() {
-  if (PAGES.length < 3) { alert("Need at least 3 pages for matching!"); return; }
+  const selected = getSelectedPages();
+  if (selected.length < 3) { alert("Need at least 3 pages for matching!"); return; }
   quizMode = 'match';
-  allPages = shuffle([...PAGES]);
+  allPages = shuffle(selected);
   batchStart = 0;
   totalScore = { correct: 0, wrong: 0 };
   showScreen('match-screen');
@@ -321,8 +339,10 @@ function matchNextPerson() {
 // FREE WRITE MODE
 // ══════════════════════════════════════════════════════════════
 function startFreeWrite() {
+  const selected = getSelectedPages();
+  if (selected.length === 0) { alert("No pages in this set!"); return; }
   quizMode = 'freewrite';
-  allPages = shuffle([...PAGES]);
+  allPages = shuffle(selected);
   batchStart = 0;
   totalScore = { correct: 0, wrong: 0 };
   showScreen('fw-screen');
@@ -449,6 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('#btn-matching').addEventListener('click', startMatching);
   $('#btn-freewrite').addEventListener('click', startFreeWrite);
+  $('#quiz-subset').addEventListener('change', updatePageCount);
 
   $('#match-next-btn').addEventListener('click', matchNextPerson);
   $('#match-back').addEventListener('click', showMenu);
