@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ferda Pages</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── PASSWORD SCREEN ──────────────────────────────────── -->
+  <div id="password-screen" class="screen active">
+    <h1>🤝 Ferda Pages</h1>
+    <p class="subtitle">Enter password to continue</p>
+    <div class="pw-input-group">
+      <input id="pw-input" type="password" placeholder="Password" />
+      <button id="pw-btn">Enter</button>
+    </div>
+    <p id="pw-error" class="pw-error"></p>
+  </div>
+
+  <!-- ── MENU SCREEN ──────────────────────────────────────── -->
+  <div id="menu-screen" class="screen">
+    <h1>Ferda Pages</h1>
+    <p id="page-count" class="page-count"></p>
+
+    <button id="btn-matching" class="menu-btn">
+      🎯 Matching
+      <span class="btn-desc">Given a name, fill out the whole page by picking from multiple choices</span>
+    </button>
+    <button id="btn-freewrite" class="menu-btn">
+      ✍️ Free Write
+      <span class="btn-desc">Given a name, type every field on the page from memory</span>
+    </button>
+  </div>
+
+  <!-- ── MATCHING SCREEN ──────────────────────────────────── -->
+  <div id="match-screen" class="screen">
+    <div class="quiz-header">
+      <button id="match-back" class="back-btn">← Menu</button>
+      <span id="match-person-count" class="person-counter"></span>
+      <div id="match-score" class="score-display"></div>
+    </div>
+    <div class="progress-bar-container"><div id="match-progress" class="progress-bar"></div></div>
+
+    <div class="match-card" id="match-card-content">
+      <!-- Dynamically built: name + rows for each field -->
+    </div>
+
+    <div class="next-btn-container">
+      <button id="match-next-btn" class="next-btn">Next Person →</button>
+    </div>
+  </div>
+
+  <!-- ── FREE WRITE SCREEN ────────────────────────────────── -->
+  <div id="fw-screen" class="screen">
+    <div class="quiz-header">
+      <button id="fw-back" class="back-btn">← Menu</button>
+      <span id="fw-person-count" class="person-counter"></span>
+      <div id="fw-score" class="score-display"></div>
+    </div>
+    <div class="progress-bar-container"><div id="fw-progress" class="progress-bar"></div></div>
+
+    <div class="fw-card">
+      <div id="fw-person-name" class="person-name"></div>
+      <div id="fw-fields"></div>
+      <button id="fw-submit-btn" class="submit-btn">Check Answers</button>
+      <div class="next-btn-container">
+        <button id="fw-next-btn" class="next-btn">Next Person →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RESULTS SCREEN ───────────────────────────────────── -->
+  <div id="results-screen" class="screen" style="justify-content:center; min-height:100vh;">
+    <div class="results-card">
+      <h2>Quiz Complete!</h2>
+      <div id="final-score" class="final-score"></div>
+      <p id="final-detail" class="detail"></p>
+      <div class="results-btns">
+        <button id="results-retry" class="primary">Try Again</button>
+        <button id="results-menu">Back to Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts: pages data first, then app logic -->
+  <script src="pages.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
