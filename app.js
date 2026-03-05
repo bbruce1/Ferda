@@ -1,8 +1,9 @@
 // ============================================================
-// APP LOGIC
+// APP LOGIC — Batch-of-3 quiz system
 // ============================================================
 
 const PASSWORD = "baghuckers";
+const BATCH_SIZE = 3;
 
 // ── Helpers ──────────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -22,7 +23,6 @@ function showScreen(id) {
   $(`#${id}`).classList.add('active');
 }
 
-// Map internal field keys to nice labels
 const FIELD_LABELS = {
   page: "Page #",
   yearMajor: "Year / Major",
@@ -34,10 +34,8 @@ const FIELD_LABELS = {
   extra: "Extra"
 };
 
-// Base fields used in quizzing (everything except name)
 const BASE_FIELDS = ["page", "yearMajor", "hometown", "position", "bigBrother", "littleBrother", "pledgeClass"];
 
-// Get the fields to quiz for a specific person — skips any field that is null/empty
 function getFieldsForPerson(person) {
   const all = [...BASE_FIELDS, "extra"];
   return all.filter(key => person[key] != null && String(person[key]).trim() !== "");
@@ -48,7 +46,6 @@ function initPassword() {
   const input = $('#pw-input');
   const btn = $('#pw-btn');
   const err = $('#pw-error');
-
   function tryLogin() {
     if (input.value.trim() === PASSWORD) {
       sessionStorage.setItem('authed', '1');
@@ -59,7 +56,6 @@ function initPassword() {
       input.focus();
     }
   }
-
   btn.addEventListener('click', tryLogin);
   input.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
 }
@@ -70,17 +66,106 @@ function showMenu() {
   $('#page-count').textContent = `${PAGES.length} pages loaded`;
 }
 
-// ── State ────────────────────────────────────────────────────
-let quizPages = [];
-let quizIndex = 0;         // which person we're on
-let quizScore = { correct: 0, wrong: 0 };  // per-field scoring
-let quizMode = '';         // 'match' or 'freewrite'
+// ══════════════════════════════════════════════════════════════
+// SHARED BATCH STATE
+// ══════════════════════════════════════════════════════════════
+let allPages = [];           // all pages shuffled once at start
+let batchStart = 0;          // index into allPages where current batch begins
+let currentBatch = [];       // the 3 (or fewer) pages in this batch
+let batchRound = 0;          // how many times we've attempted this batch
+let personIndex = 0;         // which person within the batch we're on
+let batchMistakes = new Set(); // names of people we got wrong this round
+let quizMode = '';           // 'match' or 'freewrite'
+let totalScore = { correct: 0, wrong: 0 };
 
-// Matching-specific state: step through fields within one person
+// Matching-specific
 let matchFieldIndex = 0;
-let matchFields = [];       // fields for current person
-let matchAnswered = {};     // tracks what's been answered for current person
-let matchLocked = false;    // prevent clicks during transition
+let matchFields = [];
+let matchAnswered = {};
+let matchLocked = false;
+let personHadMistake = false; // did current person have any wrong answer
+
+// ── Start a new batch ────────────────────────────────────────
+function startBatch() {
+  currentBatch = allPages.slice(batchStart, batchStart + BATCH_SIZE);
+  if (currentBatch.length === 0) { showResults(); return; }
+  batchRound = 0;
+  startBatchRound();
+}
+
+function startBatchRound() {
+  batchRound++;
+  batchMistakes = new Set();
+  personIndex = 0;
+  // On first round, use the batch as-is; on repeats, shuffle order
+  if (batchRound > 1) currentBatch = shuffle(currentBatch);
+  startNextPersonInBatch();
+}
+
+function startNextPersonInBatch() {
+  if (personIndex >= currentBatch.length) {
+    // Finished everyone in this round — did we pass?
+    if (batchMistakes.size === 0) {
+      // Perfect round! Move to next batch
+      batchStart += BATCH_SIZE;
+      showBatchComplete();
+    } else {
+      // Had mistakes — repeat the batch
+      showBatchRetry();
+    }
+    return;
+  }
+  if (quizMode === 'match') {
+    beginMatchPerson();
+  } else {
+    renderFWQuestion();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// BATCH INTERSTITIALS
+// ══════════════════════════════════════════════════════════════
+function showBatchComplete() {
+  const totalBatches = Math.ceil(allPages.length / BATCH_SIZE);
+  const currentBatchNum = Math.min(Math.ceil(batchStart / BATCH_SIZE), totalBatches);
+
+  if (batchStart >= allPages.length) {
+    showResults();
+    return;
+  }
+
+  showScreen('batch-screen');
+  $('#batch-title').textContent = '✅ Batch Complete!';
+  $('#batch-detail').textContent = `You got all ${currentBatch.length} pages perfect!`;
+  $('#batch-progress-text').textContent = `${batchStart} of ${allPages.length} pages mastered`;
+  const pct = (batchStart / allPages.length) * 100;
+  $('#batch-bar').style.width = pct + '%';
+  $('#batch-btn').textContent = 'Next Batch →';
+  $('#batch-btn').onclick = () => startBatch();
+}
+
+function showBatchRetry() {
+  showScreen('batch-screen');
+  $('#batch-title').textContent = '🔄 Not quite!';
+  $('#batch-detail').textContent = `Missed something on ${batchMistakes.size} page${batchMistakes.size > 1 ? 's' : ''}. Let's try this batch again.`;
+  $('#batch-progress-text').textContent = `${batchStart} of ${allPages.length} pages mastered · Round ${batchRound}`;
+  const pct = (batchStart / allPages.length) * 100;
+  $('#batch-bar').style.width = pct + '%';
+  $('#batch-btn').textContent = 'Retry Batch →';
+  $('#batch-btn').onclick = () => startBatchRound();
+}
+
+function updateHeader(prefix) {
+  const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
+  const totalBatches = Math.ceil(allPages.length / BATCH_SIZE);
+  $(`#${prefix}-person-count`).textContent =
+    `Batch ${batchNum}/${totalBatches} · Person ${personIndex + 1}/${currentBatch.length}` +
+    (batchRound > 1 ? ` · Round ${batchRound}` : '');
+  $(`#${prefix}-score`).innerHTML =
+    `<span class="correct">${totalScore.correct}✓</span> · <span class="wrong">${totalScore.wrong}✗</span>`;
+  const pct = allPages.length > 0 ? (batchStart / allPages.length) * 100 : 0;
+  $(`#${prefix}-progress`).style.width = pct + '%';
+}
 
 // ══════════════════════════════════════════════════════════════
 // MATCHING MODE
@@ -88,47 +173,38 @@ let matchLocked = false;    // prevent clicks during transition
 function startMatching() {
   if (PAGES.length < 3) { alert("Need at least 3 pages for matching!"); return; }
   quizMode = 'match';
-  quizPages = shuffle(PAGES);
-  quizIndex = 0;
-  quizScore = { correct: 0, wrong: 0 };
+  allPages = shuffle([...PAGES]);
+  batchStart = 0;
+  totalScore = { correct: 0, wrong: 0 };
   showScreen('match-screen');
-  startMatchPerson();
+  startBatch();
 }
 
-// Begin a new person — reset field stepper
-function startMatchPerson() {
-  if (quizIndex >= quizPages.length) { showResults(); return; }
-  const person = quizPages[quizIndex];
+function beginMatchPerson() {
+  const person = currentBatch[personIndex];
   matchFields = getFieldsForPerson(person);
   matchFieldIndex = 0;
   matchAnswered = {};
   matchLocked = false;
+  personHadMistake = false;
+  showScreen('match-screen');
   renderMatchPage();
 }
 
-// Render the full page card with answered fields + current question
 function renderMatchPage() {
-  const person = quizPages[quizIndex];
-  const totalFields = quizPages.reduce((sum, p) => sum + getFieldsForPerson(p).length, 0);
-  const answeredSoFar = quizScore.correct + quizScore.wrong;
+  const person = currentBatch[personIndex];
+  updateHeader('match');
 
-  // Header
-  $('#match-score').innerHTML = `<span class="correct">${quizScore.correct}✓</span> · <span class="wrong">${quizScore.wrong}✗</span>`;
-  const pct = totalFields > 0 ? (answeredSoFar / totalFields) * 100 : 0;
-  $('#match-progress').style.width = pct + '%';
-  $('#match-person-count').textContent = `Person ${quizIndex + 1} of ${quizPages.length}`;
-
-  // Build the page card
   const card = $('#match-card-content');
   card.innerHTML = '';
 
-  // Name at top
+  // Name
   const nameEl = document.createElement('div');
   nameEl.className = 'person-name';
   nameEl.textContent = person.name;
   card.appendChild(nameEl);
 
-  // Render each field
+  // Fields
   matchFields.forEach((key, idx) => {
     const row = document.createElement('div');
     row.className = 'match-row';
@@ -139,7 +215,6 @@ function renderMatchPage() {
     row.appendChild(label);
 
     if (idx < matchFieldIndex) {
-      // Already answered — show the result
       const val = document.createElement('div');
       const ans = matchAnswered[key];
       if (ans.correct) {
@@ -151,9 +226,7 @@ function renderMatchPage() {
       }
       row.appendChild(val);
     } else if (idx === matchFieldIndex) {
-      // Current question — show multiple choice
       row.classList.add('match-row-active');
-
       const optionsDiv = document.createElement('div');
       optionsDiv.className = 'options-grid';
       optionsDiv.id = 'match-options';
@@ -161,8 +234,6 @@ function renderMatchPage() {
       const correctVal = person[key] || "(none)";
       const others = PAGES.filter(p => p.name !== person.name && p[key] && p[key] !== correctVal);
       const shuffledOthers = shuffle(others);
-
-      // Deduplicate distractors
       const uniqueDistractors = [];
       const seen = new Set([correctVal.toLowerCase()]);
       for (const o of shuffledOthers) {
@@ -174,7 +245,6 @@ function renderMatchPage() {
         if (uniqueDistractors.length >= 3) break;
       }
       while (uniqueDistractors.length < 3) uniqueDistractors.push("—");
-
       const options = shuffle([correctVal, ...uniqueDistractors.slice(0, 3)]);
 
       options.forEach(opt => {
@@ -184,24 +254,20 @@ function renderMatchPage() {
         btn.addEventListener('click', () => handleMatchFieldAnswer(btn, key, opt, correctVal));
         optionsDiv.appendChild(btn);
       });
-
       row.appendChild(optionsDiv);
     } else {
-      // Future field — show placeholder
       const val = document.createElement('div');
       val.className = 'match-row-value val-pending';
       val.textContent = '?';
       row.appendChild(val);
     }
-
     card.appendChild(row);
   });
 
-  // Show/hide the "Next Person" button
+  // Done with this person?
   const done = matchFieldIndex >= matchFields.length;
   $('#match-next-btn').classList.toggle('show', done);
 
-  // Auto-scroll: to the active row or the next-person button
   setTimeout(() => {
     if (done) {
       $('#match-next-btn').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -216,23 +282,22 @@ function handleMatchFieldAnswer(btn, key, chosen, correct) {
   if (matchLocked) return;
   matchLocked = true;
 
-  // Disable all buttons for this question
   const allBtns = $$('#match-options .option-btn');
   allBtns.forEach(b => b.classList.add('disabled'));
 
   const isCorrect = chosen === correct;
   if (isCorrect) {
     btn.classList.add('correct');
-    quizScore.correct++;
+    totalScore.correct++;
   } else {
     btn.classList.add('wrong');
-    quizScore.wrong++;
+    totalScore.wrong++;
+    personHadMistake = true;
     allBtns.forEach(b => { if (b.textContent === correct) b.classList.add('correct'); });
   }
 
   matchAnswered[key] = { chosen, correct: isCorrect };
 
-  // After a brief delay, advance to next field
   setTimeout(() => {
     matchFieldIndex++;
     matchLocked = false;
@@ -241,11 +306,14 @@ function handleMatchFieldAnswer(btn, key, chosen, correct) {
 }
 
 function matchNextPerson() {
-  quizIndex++;
-  startMatchPerson();
-  // Scroll to top of the card for the new person
+  if (personHadMistake) {
+    batchMistakes.add(currentBatch[personIndex].name);
+  }
+  personIndex++;
+  startNextPersonInBatch();
   setTimeout(() => {
-    $('#match-card-content').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const card = $('#match-card-content');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 50);
 }
 
@@ -254,31 +322,22 @@ function matchNextPerson() {
 // ══════════════════════════════════════════════════════════════
 function startFreeWrite() {
   quizMode = 'freewrite';
-  quizPages = shuffle(PAGES);
-  quizIndex = 0;
-  quizScore = { correct: 0, wrong: 0 };
+  allPages = shuffle([...PAGES]);
+  batchStart = 0;
+  totalScore = { correct: 0, wrong: 0 };
   showScreen('fw-screen');
-  renderFWQuestion();
+  startBatch();
 }
 
 function renderFWQuestion() {
-  if (quizIndex >= quizPages.length) { showResults(); return; }
-
-  const person = quizPages[quizIndex];
-  const totalFields = quizPages.reduce((sum, p) => sum + getFieldsForPerson(p).length, 0);
-  const answeredSoFar = quizScore.correct + quizScore.wrong;
-
-  $('#fw-score').innerHTML = `<span class="correct">${quizScore.correct}✓</span> · <span class="wrong">${quizScore.wrong}✗</span>`;
-  const pct = totalFields > 0 ? (answeredSoFar / totalFields) * 100 : 0;
-  $('#fw-progress').style.width = pct + '%';
+  const person = currentBatch[personIndex];
+  showScreen('fw-screen');
+  updateHeader('fw');
 
   $('#fw-person-name').textContent = person.name;
-  $('#fw-person-count').textContent = `Person ${quizIndex + 1} of ${quizPages.length}`;
 
-  // Build fields
   const container = $('#fw-fields');
   container.innerHTML = '';
-
   const fieldsToQuiz = getFieldsForPerson(person);
 
   fieldsToQuiz.forEach(key => {
@@ -292,7 +351,6 @@ function renderFWQuestion() {
     container.appendChild(div);
   });
 
-  // Focus first input
   const firstInput = container.querySelector('input');
   if (firstInput) setTimeout(() => {
     firstInput.focus();
@@ -304,8 +362,9 @@ function renderFWQuestion() {
 }
 
 function submitFreeWrite() {
-  const person = quizPages[quizIndex];
+  const person = currentBatch[personIndex];
   const fields = $$('#fw-fields .fw-field');
+  let hadMistake = false;
 
   fields.forEach(field => {
     const input = field.querySelector('input');
@@ -313,26 +372,28 @@ function submitFreeWrite() {
     const key = input.dataset.key;
     const correct = person[key] || "";
     const answer = input.value.trim();
-
     input.disabled = true;
 
-    // Case-insensitive, trim comparison
     if (answer.toLowerCase() === correct.toLowerCase()) {
       input.classList.add('correct');
-      quizScore.correct++;
+      totalScore.correct++;
     } else {
       input.classList.add('wrong');
-      quizScore.wrong++;
+      totalScore.wrong++;
+      hadMistake = true;
       correction.textContent = `✦ ${correct}`;
       correction.classList.add('show');
     }
   });
 
-  $('#fw-score').innerHTML = `<span class="correct">${quizScore.correct}✓</span> · <span class="wrong">${quizScore.wrong}✗</span>`;
+  if (hadMistake) {
+    batchMistakes.add(person.name);
+  }
+
+  updateHeader('fw');
   $('#fw-submit-btn').style.display = 'none';
   $('#fw-next-btn').classList.add('show');
 
-  // Auto-scroll to the first wrong field, or the next button if all correct
   setTimeout(() => {
     const firstWrong = document.querySelector('#fw-fields .fw-field input.wrong');
     if (firstWrong) {
@@ -344,9 +405,8 @@ function submitFreeWrite() {
 }
 
 function fwNext() {
-  quizIndex++;
-  renderFWQuestion();
-  // Scroll to top of the card for the new person
+  personIndex++;
+  startNextPersonInBatch();
   setTimeout(() => {
     $('#fw-person-name').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 50);
@@ -357,8 +417,8 @@ function fwNext() {
 // ══════════════════════════════════════════════════════════════
 function showResults() {
   showScreen('results-screen');
-  const total = quizScore.correct + quizScore.wrong;
-  const pct = total === 0 ? 0 : Math.round((quizScore.correct / total) * 100);
+  const total = totalScore.correct + totalScore.wrong;
+  const pct = total === 0 ? 0 : Math.round((totalScore.correct / total) * 100);
 
   let cls = 'bad';
   if (pct >= 80) cls = 'great';
@@ -366,7 +426,7 @@ function showResults() {
 
   $('#final-score').textContent = pct + '%';
   $('#final-score').className = 'final-score ' + cls;
-  $('#final-detail').textContent = `${quizScore.correct} correct out of ${total} fields across ${quizPages.length} pages`;
+  $('#final-detail').textContent = `${totalScore.correct} correct out of ${total} fields across ${allPages.length} pages`;
 }
 
 function restartSameMode() {
@@ -380,7 +440,6 @@ function restartSameMode() {
 document.addEventListener('DOMContentLoaded', () => {
   initPassword();
 
-  // Check if already authed this session
   if (sessionStorage.getItem('authed') === '1') {
     showMenu();
   } else {
@@ -388,24 +447,20 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#pw-input').focus();
   }
 
-  // Menu buttons
   $('#btn-matching').addEventListener('click', startMatching);
   $('#btn-freewrite').addEventListener('click', startFreeWrite);
 
-  // Match controls
   $('#match-next-btn').addEventListener('click', matchNextPerson);
   $('#match-back').addEventListener('click', showMenu);
 
-  // Free write controls
   $('#fw-submit-btn').addEventListener('click', submitFreeWrite);
   $('#fw-next-btn').addEventListener('click', fwNext);
   $('#fw-back').addEventListener('click', showMenu);
 
-  // Results
   $('#results-retry').addEventListener('click', restartSameMode);
   $('#results-menu').addEventListener('click', showMenu);
 
-  // Allow Enter to submit free write
+  // Enter key for free write
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && quizMode === 'freewrite' && $('#fw-screen').classList.contains('active')) {
       const submitBtn = $('#fw-submit-btn');
